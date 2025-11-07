@@ -1,0 +1,48 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap');
+
+:root {
+  font-family: 'Inter', 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui,
+    sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  color: #111827;
+  background-color: #f5f5f7;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --color-background: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surfaceMuted: #f9fafb;
+  --color-border: rgba(15, 23, 42, 0.08);
+  --color-text: #111827;
+  --color-muted: #4b5563;
+  --color-accent: #6366f1;
+  --color-accentSoft: rgba(99, 102, 241, 0.12);
+  --color-onAccent: #f8fafc;
+  --color-glow: rgba(99, 102, 241, 0.35);
+  --color-shadowSoft: 0 24px 60px rgba(15, 23, 42, 0.12);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-text);
+  transition: background 400ms ease, color 400ms ease;
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
