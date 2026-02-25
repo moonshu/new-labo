@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Glassmorphism Gradient Demo</title>
+  <style>
+    :root {
+      --bg-gradient: radial-gradient(circle at 20% 20%, rgba(91, 163, 255, 0.45), transparent 55%),
+        radial-gradient(circle at 80% 15%, rgba(255, 143, 214, 0.4), transparent 50%),
+        radial-gradient(circle at 10% 90%, rgba(255, 210, 128, 0.35), transparent 60%),
+        linear-gradient(135deg, #182848, #4b6cb7 60%, #77e4d4);
+      --glass-bg: rgba(255, 255, 255, 0.08);
+      --glass-border: rgba(255, 255, 255, 0.45);
+      --glass-highlight: rgba(255, 255, 255, 0.55);
+      --text-gradient: linear-gradient(120deg, #b5f5ff, #f7c4ff 45%, #ffe29a 80%, #b5f5ff 100%);
+      --body-font: 'Pretendard', 'Spoqa Han Sans Neo', 'Noto Sans KR', sans-serif;
+      --card-shadow: 0 25px 45px rgba(15, 29, 63, 0.35);
+      --border-blur: 30px;
+      --text-shadow: 0 12px 28px rgba(12, 18, 45, 0.55);
+      --button-gradient: linear-gradient(135deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.15));
+      --button-border: rgba(255, 255, 255, 0.5);
+      --button-shadow: 0 12px 24px rgba(18, 32, 74, 0.35);
+      --button-text: linear-gradient(120deg, #f8fbff, #d5f6ff 35%, #ffd4f4 70%);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-gradient);
+      backdrop-filter: saturate(150%);
+      font-family: var(--body-font);
+      color: #f5f7ff;
+    }
+
+    .scene {
+      width: min(92vw, 1080px);
+      padding: clamp(2.5rem, 4vw + 1rem, 5rem);
+      position: relative;
+      border-radius: 38px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+      overflow: hidden;
+      isolation: isolate;
+    }
+
+    .glass-card {
+      position: relative;
+      padding: clamp(3rem, 4vw + 1rem, 6rem);
+      border-radius: 36px;
+      background: var(--glass-bg);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: var(--card-shadow);
+      backdrop-filter: blur(28px) saturate(130%);
+      -webkit-backdrop-filter: blur(28px) saturate(130%);
+    }
+
+    .glass-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 36px;
+      border: 1px solid transparent;
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0)) border-box;
+      mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      mask-composite: exclude;
+      -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+    }
+
+    .glass-glow {
+      position: absolute;
+      inset: -40%;
+      background: radial-gradient(circle at 50% 20%, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0));
+      filter: blur(var(--border-blur));
+      opacity: 0.45;
+      z-index: -1;
+    }
+
+    .eyebrow {
+      font-size: clamp(1rem, 1.4vw + 0.6rem, 1.45rem);
+      letter-spacing: 0.48em;
+      text-transform: uppercase;
+      margin-bottom: clamp(1.5rem, 2vw, 2.25rem);
+      opacity: 0.75;
+    }
+
+    .hero-title {
+      font-size: clamp(3rem, 6vw + 1rem, 6.5rem);
+      font-weight: 700;
+      line-height: 1.05;
+      max-width: 16ch;
+      margin: 0 0 clamp(1.5rem, 2vw, 2rem);
+      background: var(--text-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      text-shadow: var(--text-shadow);
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1.2rem, 2vw + 0.8rem, 1.75rem);
+      max-width: 45ch;
+      margin: 0 0 clamp(2.5rem, 3vw, 3rem);
+      color: rgba(245, 247, 255, 0.85);
+      line-height: 1.68;
+    }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: clamp(1rem, 1.5vw, 1.75rem);
+      align-items: center;
+    }
+
+    .glass-button {
+      position: relative;
+      padding: 1rem 2.75rem;
+      border-radius: 999px;
+      background: var(--button-gradient);
+      border: 1px solid var(--button-border);
+      box-shadow: var(--button-shadow);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      cursor: pointer;
+      overflow: hidden;
+      transition: transform 180ms ease, box-shadow 180ms ease;
+    }
+
+    .glass-button::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0));
+      opacity: 0;
+      transition: opacity 200ms ease;
+    }
+
+    .glass-button span {
+      position: relative;
+      z-index: 1;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      background: var(--button-text);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .glass-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 32px rgba(18, 32, 74, 0.45);
+    }
+
+    .glass-button:hover::after {
+      opacity: 1;
+    }
+
+    .glass-button:active {
+      transform: translateY(1px);
+      box-shadow: 0 8px 16px rgba(18, 32, 74, 0.35);
+    }
+
+    .secondary-note {
+      margin: 0;
+      font-size: 0.95rem;
+      color: rgba(245, 247, 255, 0.65);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.65rem 1.2rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(245, 247, 255, 0.7);
+    }
+
+    @media (max-width: 720px) {
+      .scene {
+        padding: 2rem;
+        border-radius: 28px;
+      }
+
+      .glass-card {
+        padding: clamp(2.5rem, 7vw, 3.5rem);
+        border-radius: 26px;
+      }
+
+      .cta-row {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="scene">
+    <div class="glass-card">
+      <span class="badge">Aurora Edition</span>
+      <p class="eyebrow">라이프 벡터 테스트</p>
+      <h1 class="hero-title">당신의 빛을 비추는 라이프 인사이트</h1>
+      <p class="hero-subtitle">
+        반투명 유리처럼 맑지만, 오로라 컬러가 살아 숨 쉬는 대시보드를 상상해보세요. 오늘의 감정, 목표,
+        루틴이 한 장의 빛나는 카드 안에 차곡차곡 담겨, 당신만의 패턴을 알려줍니다.
+      </p>
+      <div class="cta-row">
+        <button class="glass-button" type="button"><span>지금 바로 시작하기</span></button>
+        <p class="secondary-note">* 3분 투자로 내 삶의 흐름을 시각화해 보세요.</p>
+      </div>
+      <div class="glass-glow" aria-hidden="true"></div>
+    </div>
+  </div>
+</body>
+</html>
