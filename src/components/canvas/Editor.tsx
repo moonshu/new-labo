@@ -35,15 +35,31 @@ export default function Editor() {
         setAnalyzing(true);
         setFocused(false);
 
-        // AI API 호출 시뮬레이션 (Phase 2에서 실제 연결)
-        setTimeout(() => {
-            setAnalyzing(false);
-            setSuggestions({
-                problemTitle: "개발 생산성의 본질은 무엇인가?",
-                themeName: "AI 도구 한계",
-                status: "DRAFT",
+        try {
+            const response = await fetch('/api/ai/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content,
+                    existingThemes: [], // 향후 실제 데이터 주입
+                    activeProblems: [], // 향후 실제 데이터 주입
+                }),
             });
-        }, 2000);
+
+            if (!response.ok) throw new Error('Analysis failed');
+
+            const result = await response.json();
+
+            setSuggestions({
+                problemTitle: result.problemTitle || "새 문제",
+                themeName: result.themeName || "새 주제",
+                status: result.status || "DRAFT",
+            });
+        } catch (error) {
+            console.error("AI Analysis failed:", error);
+        } finally {
+            setAnalyzing(false);
+        }
     };
 
     const handleIdk = () => {
