@@ -1,10 +1,20 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Manrope, Noto_Serif_KR } from "next/font/google";
+import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 
-const inter = Inter({ subsets: ["latin"] });
+const manrope = Manrope({
+  subsets: ["latin"],
+  variable: "--font-app-sans",
+});
+
+const notoSerifKr = Noto_Serif_KR({
+  subsets: ["latin"],
+  variable: "--font-app-serif",
+  weight: ["400", "600"],
+});
 
 export const metadata: Metadata = {
   title: "Thought Mapping System",
@@ -18,11 +28,13 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko" className="dark">
-      <body className={`${inter.className} bg-background text-foreground antialiased min-h-screen`}>
-        <TooltipProvider delayDuration={300}>
-          {children}
-        </TooltipProvider>
-        <Toaster />
+      <body className={`${manrope.variable} ${notoSerifKr.variable} bg-background text-foreground antialiased min-h-screen`}>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+          <TooltipProvider delayDuration={300}>
+            {children}
+          </TooltipProvider>
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

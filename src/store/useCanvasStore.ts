@@ -1,12 +1,5 @@
 import { create } from "zustand";
-
-interface AISuggestion {
-    themeId?: string;
-    themeName?: string;
-    problemId?: string;
-    problemTitle?: string;
-    status?: "DRAFT" | "HESITATED" | "CONCLUDED";
-}
+import type { AISuggestion, ContextNudge } from "@/types/thought";
 
 interface CanvasState {
     content: string;
@@ -15,8 +8,11 @@ interface CanvasState {
     setFocused: (focused: boolean) => void;
     isAnalyzing: boolean;
     setAnalyzing: (analyzing: boolean) => void;
-    suggestions: AISuggestion | null;
-    setSuggestions: (suggestions: AISuggestion | null) => void;
+    suggestion: AISuggestion | null;
+    setSuggestion: (suggestion: AISuggestion | null) => void;
+    patchSuggestion: (patch: Partial<AISuggestion>) => void;
+    contextualNudge: ContextNudge | null;
+    setContextualNudge: (nudge: ContextNudge | null) => void;
     clearCanvas: () => void;
 }
 
@@ -27,7 +23,15 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     setFocused: (focused) => set({ isFocused: focused }),
     isAnalyzing: false,
     setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
-    suggestions: null,
-    setSuggestions: (suggestions) => set({ suggestions }),
-    clearCanvas: () => set({ content: "", suggestions: null, isFocused: false }),
+    suggestion: null,
+    setSuggestion: (suggestion) => set({ suggestion }),
+    patchSuggestion: (patch) =>
+        set((state) =>
+            state.suggestion
+                ? { suggestion: { ...state.suggestion, ...patch } }
+                : { suggestion: null }
+        ),
+    contextualNudge: null,
+    setContextualNudge: (contextualNudge) => set({ contextualNudge }),
+    clearCanvas: () => set({ content: "", suggestion: null, contextualNudge: null, isFocused: false }),
 }));
