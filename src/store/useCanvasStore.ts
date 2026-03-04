@@ -9,6 +9,7 @@ interface CanvasState {
     isAnalyzing: boolean;
     setAnalyzing: (analyzing: boolean) => void;
     suggestion: AISuggestion | null;
+    originalSuggestion: AISuggestion | null;
     setSuggestion: (suggestion: AISuggestion | null) => void;
     patchSuggestion: (patch: Partial<AISuggestion>) => void;
     contextualNudge: ContextNudge | null;
@@ -24,7 +25,14 @@ export const useCanvasStore = create<CanvasState>((set) => ({
     isAnalyzing: false,
     setAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
     suggestion: null,
-    setSuggestion: (suggestion) => set({ suggestion }),
+    originalSuggestion: null,
+    setSuggestion: (suggestion) =>
+        set({
+            suggestion,
+            originalSuggestion: suggestion
+                ? JSON.parse(JSON.stringify(suggestion))
+                : null,
+        }),
     patchSuggestion: (patch) =>
         set((state) =>
             state.suggestion
@@ -33,5 +41,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         ),
     contextualNudge: null,
     setContextualNudge: (contextualNudge) => set({ contextualNudge }),
-    clearCanvas: () => set({ content: "", suggestion: null, contextualNudge: null, isFocused: false }),
+    clearCanvas: () =>
+        set({
+            content: "",
+            suggestion: null,
+            originalSuggestion: null,
+            contextualNudge: null,
+            isFocused: false,
+        }),
 }));
