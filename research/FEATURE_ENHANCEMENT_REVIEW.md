@@ -1,7 +1,7 @@
 # 기능 도입 후 테스트 및 미흡점 보완 리포트
 
 ## 테스트 실행 결과
-- `npm test`: 19 tests passed
+- `npm test`: 21 tests passed
 - `npm run lint`: passed
 - `npm run build`: passed
 

@@ -144,6 +144,32 @@ export default function Editor() {
   }, [suggestion, evidenceDraft]);
 
   const isConcludedBlocked = suggestion?.status === "CONCLUDED" && evaluatedSuggestion?.passed === false;
+  const saveChecklist = useMemo(() => {
+    const items = [
+      {
+        id: "content",
+        label: "생각 본문 입력",
+        done: content.trim().length > 0,
+      },
+      {
+        id: "claim",
+        label: "핵심 주장 작성",
+        done: claimText.trim().length > 0,
+      },
+      {
+        id: "evidence",
+        label: suggestion?.status === "CONCLUDED" ? "결론 근거 연결" : "근거 연결(선택)",
+        done: suggestion?.status === "CONCLUDED" ? evidenceDraft.length > 0 : true,
+      },
+      {
+        id: "gate",
+        label: "품질 게이트 통과",
+        done: Boolean(evaluatedSuggestion?.passed),
+      },
+    ];
+
+    return items;
+  }, [content, claimText, suggestion?.status, evidenceDraft.length, evaluatedSuggestion?.passed]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -528,6 +554,25 @@ export default function Editor() {
                   onChange={(event) => patchSuggestion({ themeName: event.target.value })}
                   placeholder="연결할 주제"
                 />
+              </div>
+
+              <div className="rounded-lg border border-border/50 p-2.5 space-y-1.5">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">저장 준비 체크</p>
+                <div className="grid sm:grid-cols-2 gap-1.5">
+                  {saveChecklist.map((item) => (
+                    <p
+                      key={item.id}
+                      className={cn(
+                        "text-xs rounded-md px-2 py-1 border",
+                        item.done
+                          ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-600"
+                          : "border-amber-500/35 bg-amber-500/10 text-amber-700"
+                      )}
+                    >
+                      {item.done ? "완료" : "필요"} · {item.label}
+                    </p>
+                  ))}
+                </div>
               </div>
 
               <div className="space-y-2 rounded-lg border border-border/50 p-2.5">

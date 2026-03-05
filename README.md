@@ -18,14 +18,19 @@
 
 2. AI 분석 제안
 - `POST /api/ai/analyze`로 입력 텍스트 분석
-- 아래 3가지를 JSON으로 반환받아 칩(Chips) 형태로 제안
+- 아래 메타데이터를 JSON으로 반환받아 칩(Chips) 형태로 제안
   - `status`: `DRAFT | HESITATED | CONCLUDED`
   - `themeName`
   - `problemTitle`
+  - `uncertaintyLabel`
+  - `evidenceHints[]`
+  - `provenance`
+  - `qualityGate`
 
 3. Timeline / Graph 뷰
 - 타임라인에서 사고 흐름을 시간순으로 확인
 - 검색어/상태 기반 타임라인 필터링
+- 운영 필터(`WARNING`, `AI_ONLY`)로 품질 점검 노드 집중 검토
 - 우측 드로어에서 관계성(그래프) 영역 제공
 - 우측 드로어에서 노드 내용/상태 직접 수정
 - 우측 드로어에서 노드 삭제
@@ -51,7 +56,10 @@
 - 문제 상태 순환(OPEN/PENDING/RESOLVED) 및 문제별 필터
 - 노드 수정 시 관계 재계산 및 우측 패널 실시간 반영
 - 키보드 단축키(`/` 검색 포커스, `Cmd/Ctrl+K` 관계 패널 토글)
-- 핵심 도메인 + API 단위 테스트(`vitest`) 14종
+- 핵심 도메인 + API 단위 테스트(`vitest`) 21종
+- Editor 저장 준비 체크리스트/품질 게이트 피드백
+- Dashboard Flow 스트립(기록→분석→검증→정리)
+- 시스템 테마 기본 + 라이트/다크 전환
 
 ### 진행 중 / 예정
 
@@ -130,7 +138,29 @@ Response:
 {
   "status": "DRAFT",
   "themeName": "주제 키워드",
-  "problemTitle": "핵심 질문"
+  "problemTitle": "핵심 질문",
+  "uncertaintyLabel": "MEDIUM",
+  "evidenceHints": [
+    {
+      "id": "ev_1",
+      "type": "external_source",
+      "sourceRef": "https://example.com",
+      "relevance": 0.7
+    }
+  ],
+  "provenance": {
+    "analyzerVersion": "gemini-1.5-pro-latest",
+    "promptHash": "ai-analyze-v2-xxxx",
+    "retrievalIds": ["ev_1"],
+    "generatedAt": "2026-03-05T00:00:00.000Z",
+    "source": "ai",
+    "userEditedSuggestion": false,
+    "fromNudgeType": null
+  },
+  "qualityGate": {
+    "passed": true,
+    "reasons": []
+  }
 }
 ```
 

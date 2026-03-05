@@ -32,7 +32,18 @@ import type {
   ThoughtStatus,
 } from "@/types/thought";
 
-type NodeStatusFilter = ThoughtStatus | "ALL";
+type NodeStatusFilter = ThoughtStatus | "ALL" | "WARNING" | "AI_ONLY";
+
+function isNodeStatusFilter(value: unknown): value is NodeStatusFilter {
+  return (
+    value === "ALL" ||
+    value === "DRAFT" ||
+    value === "HESITATED" ||
+    value === "CONCLUDED" ||
+    value === "WARNING" ||
+    value === "AI_ONLY"
+  );
+}
 
 interface AddThoughtResult {
   node: ThoughtNode;
@@ -452,7 +463,9 @@ export const useSystemStore = create<SystemState>()(
             selectedProblemId: maybeState.selectedProblemId ?? parsed.data.problems[0]?.id ?? null,
             activeNodeId: maybeState.activeNodeId ?? parsed.data.nodes[0]?.id ?? null,
             timelineQuery: maybeState.timelineQuery ?? "",
-            timelineStatusFilter: maybeState.timelineStatusFilter ?? "ALL",
+            timelineStatusFilter: isNodeStatusFilter(maybeState.timelineStatusFilter)
+              ? maybeState.timelineStatusFilter
+              : "ALL",
           };
         }
 

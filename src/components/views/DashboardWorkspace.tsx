@@ -15,6 +15,8 @@ type DashboardWorkspaceProps = {
   focusProblemId?: string;
 };
 
+type TimelineFilter = ThoughtStatus | "ALL" | "WARNING" | "AI_ONLY";
+
 function dayKey(input: string): string {
   const date = new Date(input);
   const year = date.getFullYear();
@@ -23,13 +25,22 @@ function dayKey(input: string): string {
   return `${year}-${month}-${day}`;
 }
 
-const STATUS_FILTER_OPTIONS: Array<ThoughtStatus | "ALL"> = ["ALL", "DRAFT", "HESITATED", "CONCLUDED"];
+const STATUS_FILTER_OPTIONS: TimelineFilter[] = [
+  "ALL",
+  "DRAFT",
+  "HESITATED",
+  "CONCLUDED",
+  "WARNING",
+  "AI_ONLY",
+];
 
-const STATUS_FILTER_LABEL: Record<ThoughtStatus | "ALL", string> = {
+const STATUS_FILTER_LABEL: Record<TimelineFilter, string> = {
   ALL: "전체 상태",
   DRAFT: "질문",
   HESITATED: "유보",
   CONCLUDED: "정리",
+  WARNING: "근거 경고",
+  AI_ONLY: "AI 생성",
 };
 
 export default function DashboardWorkspace({ focusProblemId }: DashboardWorkspaceProps) {
@@ -100,6 +111,15 @@ export default function DashboardWorkspace({ focusProblemId }: DashboardWorkspac
       todayCount,
     };
   }, [problems, nodes, themes]);
+  const flowSteps = useMemo(
+    () => [
+      { label: "기록", done: stats.todayCount > 0 },
+      { label: "분석", done: qualityMetrics.aiGeneratedCount > 0 },
+      { label: "검증", done: qualityMetrics.warningCount === 0 },
+      { label: "정리", done: qualityMetrics.concludedCount > 0 },
+    ],
+    [stats.todayCount, qualityMetrics.aiGeneratedCount, qualityMetrics.warningCount, qualityMetrics.concludedCount]
+  );
 
   return (
     <div className="flex-1 w-full h-full flex flex-row relative overflow-hidden">
@@ -122,6 +142,25 @@ export default function DashboardWorkspace({ focusProblemId }: DashboardWorkspac
                 선택 문제 · {selectedProblem.title}
               </span>
             )}
+          </div>
+
+          <div className="surface-panel soft-scroll px-3 py-2 flex items-center gap-2 text-xs text-muted-foreground mb-2 overflow-x-auto">
+            <span className="uppercase tracking-wider text-[11px] text-muted-foreground/80">Flow</span>
+            {flowSteps.map((step, index) => (
+              <div key={step.label} className="inline-flex items-center gap-2">
+                <span
+                  className={cn(
+                    "rounded-full border px-2 py-1 text-xs whitespace-nowrap",
+                    step.done
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600"
+                      : "border-border/60 bg-muted/35 text-muted-foreground"
+                  )}
+                >
+                  {step.done ? "완료" : "대기"} · {step.label}
+                </span>
+                {index < flowSteps.length - 1 && <span className="text-muted-foreground/50">→</span>}
+              </div>
+            ))}
           </div>
 
           <div className="surface-panel soft-scroll px-3 py-2 flex md:grid md:grid-cols-5 gap-2 mb-2 overflow-x-auto">
@@ -161,12 +200,12 @@ export default function DashboardWorkspace({ focusProblemId }: DashboardWorkspac
               ref={searchInputRef}
               value={timelineQuery}
               onChange={(event) => setTimelineQuery(event.target.value)}
-              placeholder="타임라인 검색 (내용/상태)"
+              placeholder="타임라인 검색 (내용/상태/근거)"
               className="h-10 md:h-8"
             />
             <select
               value={timelineStatusFilter}
-              onChange={(event) => setTimelineStatusFilter(event.target.value as ThoughtStatus | "ALL")}
+              onChange={(event) => setTimelineStatusFilter(event.target.value as TimelineFilter)}
               className="h-10 md:h-8 w-full md:w-40 rounded-md border border-border/60 bg-background px-2 text-xs text-foreground touch-manipulation"
             >
               {STATUS_FILTER_OPTIONS.map((option) => (

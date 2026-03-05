@@ -1,17 +1,32 @@
 "use client";
 
-import { type ChangeEvent, useRef, useState } from "react";
+import { type ChangeEvent, useEffect, useRef, useState } from "react";
 import { useSystemStore } from "@/store/useSystemStore";
 import { useCanvasStore } from "@/store/useCanvasStore";
 import { cn } from "@/lib/utils";
 import { daysSince, isProblemStale } from "@/lib/domain/thought-system";
-import { Menu, Book, ListTree, Activity, Moon, ChevronRight, Download, Upload, RotateCcw, Plus, Pencil, Trash2 } from "lucide-react";
+import {
+  Menu,
+  Book,
+  ListTree,
+  Activity,
+  Moon,
+  Sun,
+  ChevronRight,
+  Download,
+  Upload,
+  RotateCcw,
+  Plus,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ProblemStatus } from "@/types/thought";
 import ThoughtStreak from "@/components/shared/ThoughtStreak";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "next-themes";
 import {
   Dialog,
   DialogContent,
@@ -33,8 +48,10 @@ const STATUS_LABEL: Record<ProblemStatus, string> = {
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { setTheme, resolvedTheme } = useTheme();
   const isFocused = useCanvasStore((state) => state.isFocused);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [mounted, setMounted] = useState(false);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState("");
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -42,6 +59,10 @@ export default function Sidebar() {
   const [renameTitle, setRenameTitle] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const {
     isSidebarOpen,
@@ -375,8 +396,28 @@ export default function Sidebar() {
                   초기화
                 </button>
               </div>
-              <div className="flex items-center gap-2 px-2 text-sm text-muted-foreground">
-                <Moon className="w-4 h-4" /> <span>조용한 흐름으로 기록 중</span>
+              <div className="flex items-center gap-2 px-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!mounted) return;
+                    setTheme(resolvedTheme === "dark" ? "light" : "dark");
+                  }}
+                  className="touch-target h-10 md:h-8 rounded-md border border-border/60 px-3 text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted/60 inline-flex items-center gap-1.5"
+                >
+                  {mounted && resolvedTheme === "dark" ? (
+                    <>
+                      <Sun className="w-3.5 h-3.5" />
+                      라이트
+                    </>
+                  ) : (
+                    <>
+                      <Moon className="w-3.5 h-3.5" />
+                      다크
+                    </>
+                  )}
+                </button>
+                <span className="text-xs text-muted-foreground/80">기록 환경 전환</span>
               </div>
             </>
           ) : (

@@ -689,6 +689,9 @@ export function applyThoughtNode(
 
   const claims = sanitizeClaims(claimsInput);
   const evidence = sanitizeEvidence(evidenceInput);
+  if (suggestion.status === "CONCLUDED" && evidence.length === 0) {
+    throw new Error("결론 상태에는 최소 1개의 근거가 필요합니다.");
+  }
   const hasEvidenceWarning = suggestion.status === "CONCLUDED" && evidence.length === 0;
   const provenanceBase = normalizeProvenance(input.provenance ?? suggestion.provenance, {
     generatedAt: timestamp,
@@ -771,12 +774,29 @@ export function rankProblems(problems: Problem[]): Problem[] {
 export function filterNodes(
   nodes: ThoughtNode[],
   query: string,
-  statusFilter: ThoughtStatus | "ALL"
+  statusFilter: ThoughtStatus | "ALL" | "WARNING" | "AI_ONLY"
 ): ThoughtNode[] {
   const normalizedQuery = query.trim().toLowerCase();
 
   return nodes.filter((node) => {
-    if (statusFilter !== "ALL" && node.status !== statusFilter) {
+    if (statusFilter === "WARNING" && !node.hasEvidenceWarning) {
+      return false;
+    }
+
+    if (
+      statusFilter === "AI_ONLY" &&
+      node.provenance.source !== "ai" &&
+      node.provenance.source !== "fallback"
+    ) {
+      return false;
+    }
+
+    if (
+      statusFilter !== "ALL" &&
+      statusFilter !== "WARNING" &&
+      statusFilter !== "AI_ONLY" &&
+      node.status !== statusFilter
+    ) {
       return false;
     }
 
@@ -906,6 +926,9 @@ export function updateThoughtNode(
   const baseEvidence = Array.isArray(existing.evidence) ? existing.evidence : [];
   const nextClaims = sanitizeClaims(params.claims?.length ? params.claims : baseClaims);
   const nextEvidence = sanitizeEvidence(params.evidence ?? baseEvidence);
+  if (params.status === "CONCLUDED" && nextEvidence.length === 0) {
+    throw new Error("결론 상태에는 최소 1개의 근거가 필요합니다.");
+  }
   const provenanceInput =
     params.provenance ??
     existing.provenance ??

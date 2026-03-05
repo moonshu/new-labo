@@ -330,6 +330,8 @@ function NodeEditor({
   const [draftClaims, setDraftClaims] = useState<ThoughtClaim[]>(activeNode.claims);
   const [draftEvidence, setDraftEvidence] = useState<ThoughtEvidence[]>(activeNode.evidence);
   const [newEvidenceRef, setNewEvidenceRef] = useState("");
+  const missingEvidenceForConclusion =
+    draftStatus === "CONCLUDED" && draftEvidence.filter((item) => item.sourceRef.trim()).length === 0;
 
   const claimIds = draftClaims.map((claim) => claim.id);
 
@@ -432,6 +434,19 @@ function NodeEditor({
         onChange={(event) => setDraftContent(event.target.value)}
         className="min-h-24 text-sm leading-relaxed font-serif"
       />
+
+      {missingEvidenceForConclusion && (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-amber-700">
+          <p>결론 상태에는 근거가 필요합니다. 근거를 추가하거나 상태를 유보로 변경하세요.</p>
+          <button
+            type="button"
+            onClick={() => setDraftStatus("HESITATED")}
+            className="mt-1.5 rounded border border-amber-500/40 px-2 py-1 hover:bg-amber-500/10"
+          >
+            유보 상태로 전환
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <select

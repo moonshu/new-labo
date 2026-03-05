@@ -167,6 +167,30 @@ describe("thought-system domain", () => {
     expect(filtered[0].status).toBe("CONCLUDED");
   });
 
+  it("filters nodes by warning and ai-only views", () => {
+    const base = createSeedData("2026-03-05T00:00:00.000Z");
+    const flaggedNode = {
+      ...base.nodes[0],
+      id: "warn_node",
+      status: "CONCLUDED" as const,
+      hasEvidenceWarning: true,
+      provenance: {
+        ...base.nodes[0].provenance,
+        source: "ai" as const,
+      },
+    };
+
+    const warningFiltered = filterNodes([flaggedNode, ...base.nodes], "", "WARNING");
+    const aiFiltered = filterNodes([flaggedNode, ...base.nodes], "", "AI_ONLY");
+
+    expect(warningFiltered.every((node) => node.hasEvidenceWarning)).toBe(true);
+    expect(
+      aiFiltered.every(
+        (node) => node.provenance.source === "ai" || node.provenance.source === "fallback"
+      )
+    ).toBe(true);
+  });
+
   it("updates node content/status and recalculates relations", () => {
     const base = createSeedData("2026-03-05T00:00:00.000Z");
     const nodeId = base.nodes[0].id;
@@ -177,6 +201,14 @@ describe("thought-system domain", () => {
         nodeId,
         content: "기록 구조를 수정해서 관계를 다시 확인한다.",
         status: "CONCLUDED",
+        evidence: [
+          {
+            id: "ev_update",
+            type: "internal_note",
+            sourceRef: "node_2",
+            relevance: 0.7,
+          },
+        ],
       },
       "2026-03-05T12:00:00.000Z"
     );
@@ -186,7 +218,7 @@ describe("thought-system domain", () => {
     expect(updated.nextState.relations.every((relation) => relation.sourceNodeId || relation.targetNodeId)).toBe(true);
   });
 
-  it("marks warning when concluded node is saved without evidence", () => {
+  it("prevents saving concluded node without evidence", () => {
     const base = createSeedData("2026-03-05T00:00:00.000Z");
     const suggestion = {
       ...defaultSuggestion("이건 확실한 결론이다."),
@@ -194,16 +226,16 @@ describe("thought-system domain", () => {
       evidenceHints: [],
     };
 
-    const result = applyThoughtNode(
-      base,
-      {
-        content: "이건 확실한 결론이다.",
-        suggestion,
-      },
-      "2026-03-05T12:00:00.000Z"
-    );
-
-    expect(result.node.hasEvidenceWarning).toBe(true);
+    expect(() =>
+      applyThoughtNode(
+        base,
+        {
+          content: "이건 확실한 결론이다.",
+          suggestion,
+        },
+        "2026-03-05T12:00:00.000Z"
+      )
+    ).toThrowError("결론 상태에는 최소 1개의 근거가 필요합니다.");
   });
 
   it("computes quality metrics in normalized range", () => {
@@ -273,6 +305,24 @@ describe("thought-system domain", () => {
     expect(result.node.evidence).toHaveLength(1);
     expect(result.node.claims[0].supports.includes("c1")).toBe(false);
     expect(result.node.claims[0].attacks.includes("c3")).toBe(false);
+  });
+
+  it("prevents updating concluded node without evidence", () => {
+    const base = createSeedData("2026-03-05T00:00:00.000Z");
+    const nodeId = base.nodes[1].id;
+
+    expect(() =>
+      updateThoughtNode(
+        base,
+        {
+          nodeId,
+          content: "결론으로 바꾼다",
+          status: "CONCLUDED",
+          evidence: [],
+        },
+        "2026-03-05T12:00:00.000Z"
+      )
+    ).toThrowError("결론 상태에는 최소 1개의 근거가 필요합니다.");
   });
 
   it("fails quality gate for concluded suggestion without evidence", () => {
