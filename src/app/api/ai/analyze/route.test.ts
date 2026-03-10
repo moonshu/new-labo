@@ -34,6 +34,7 @@ describe("/api/ai/analyze", () => {
     expect(data).toHaveProperty("status");
     expect(data).toHaveProperty("themeName");
     expect(data).toHaveProperty("problemTitle");
+    expect(Array.isArray(data.tags)).toBe(true);
     expect(data).toHaveProperty("uncertaintyLabel");
     expect(Array.isArray(data.evidenceHints)).toBe(true);
     expect(data).toHaveProperty("provenance");

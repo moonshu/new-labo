@@ -30,7 +30,7 @@ export default function Timeline() {
 
     return (
         <div className={cn(
-            "flex-1 w-full max-w-2xl mx-auto flex flex-col justify-end gap-7 sm:gap-12 pb-10 sm:pb-16 transition-opacity",
+            "w-full max-w-2xl mx-auto flex flex-col gap-6 sm:gap-8 pb-3 sm:pb-4 transition-opacity",
             isFocused && "opacity-40"
         )}>
             <div className="flex justify-center mb-4 sm:mb-8">
@@ -90,6 +90,18 @@ export default function Timeline() {
                             )}>
                                 {node.content}
                             </p>
+                            {node.tags.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {node.tags.slice(0, 4).map((tag) => (
+                                        <span
+                                            key={`${node.id}-${tag}`}
+                                            className="rounded-full border border-border/60 bg-muted/25 px-2 py-0.5 text-[10px] sm:text-[11px] text-muted-foreground"
+                                        >
+                                            #{tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </motion.button>
                     ))}
                 </div>

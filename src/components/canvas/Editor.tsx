@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useCanvasStore } from "@/store/useCanvasStore";
 import { useSystemStore } from "@/store/useSystemStore";
 import { cn } from "@/lib/utils";
@@ -12,41 +12,38 @@ import {
 import {
   Loader2,
   ArrowRightCircle,
-  HelpCircle,
   Sparkles,
-  Link2,
   Save,
   AlertTriangle,
   ShieldCheck,
-  Plus,
-  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import type { ThoughtEvidence, ThoughtStatus, UncertaintyLabel } from "@/types/thought";
-import { useRouter } from "next/navigation";
 
-const STATUS_OPTIONS: ThoughtStatus[] = ["DRAFT", "HESITATED", "CONCLUDED"];
-const UNCERTAINTY_OPTIONS: UncertaintyLabel[] = ["LOW", "MEDIUM", "HIGH"];
 const STATUS_LABEL: Record<ThoughtStatus, string> = {
   DRAFT: "판단 유보",
   HESITATED: "망설임",
   CONCLUDED: "단정",
 };
-const UNCERTAINTY_LABEL: Record<UncertaintyLabel, string> = {
-  LOW: "낮음",
-  MEDIUM: "중간",
-  HIGH: "높음",
-};
+
+const EVIDENCE_TYPES: ThoughtEvidence["type"][] = [
+  "internal_note",
+  "external_source",
+  "retrieved_doc",
+];
+
+const MAX_EDITOR_HEIGHT = 560;
 
 function suggestionSnapshotKey(input: {
   status: ThoughtStatus;
   themeName: string;
   problemTitle: string;
+  tags: string[];
   uncertaintyLabel: UncertaintyLabel;
   evidenceHints: ThoughtEvidence[];
 }): string {
+  const tagsKey = input.tags.map((tag) => tag.trim().toLowerCase()).sort().join("|");
   const evidenceKey = input.evidenceHints
     .map((evidence) => `${evidence.type}:${evidence.sourceRef}:${evidence.relevance}`)
     .sort()
@@ -56,6 +53,7 @@ function suggestionSnapshotKey(input: {
     input.status,
     input.themeName.trim(),
     input.problemTitle.trim(),
+    tagsKey,
     input.uncertaintyLabel,
     evidenceKey,
   ].join("::");
@@ -67,8 +65,65 @@ function defaultConfidence(label: UncertaintyLabel): number {
   return 0.4;
 }
 
+function normalizeTags(input: string[]): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+
+  for (const raw of input) {
+    const tag = raw.trim().replace(/^#/, "").replace(/\s+/g, " ").slice(0, 24);
+    if (tag.length < 2) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(tag);
+    if (next.length >= 8) break;
+  }
+
+  return next.length ? next : ["메모"];
+}
+
+function normalizeEvidenceHints(input: unknown): ThoughtEvidence[] {
+  if (!Array.isArray(input)) return [];
+
+  const seen = new Set<string>();
+  const next: ThoughtEvidence[] = [];
+
+  for (const raw of input) {
+    if (!raw || typeof raw !== "object") continue;
+    const sourceRef =
+      typeof (raw as ThoughtEvidence).sourceRef === "string"
+        ? (raw as ThoughtEvidence).sourceRef.trim().replace(/\s+/g, " ")
+        : "";
+    if (!sourceRef) continue;
+    const dedupeKey = sourceRef.toLowerCase();
+    if (seen.has(dedupeKey)) continue;
+
+    const type = EVIDENCE_TYPES.includes((raw as ThoughtEvidence).type)
+      ? (raw as ThoughtEvidence).type
+      : "internal_note";
+    const relevanceRaw =
+      typeof (raw as ThoughtEvidence).relevance === "number" ? (raw as ThoughtEvidence).relevance : 0.6;
+    const relevance = Math.max(0, Math.min(1, Number(relevanceRaw.toFixed(2))));
+    const id =
+      typeof (raw as ThoughtEvidence).id === "string" && (raw as ThoughtEvidence).id.trim().length
+        ? (raw as ThoughtEvidence).id
+        : createId("evidence");
+
+    seen.add(dedupeKey);
+    next.push({
+      id,
+      type,
+      sourceRef,
+      relevance,
+    });
+
+    if (next.length >= 8) break;
+  }
+
+  return next;
+}
+
 export default function Editor() {
-  const router = useRouter();
   const {
     content,
     setContent,
@@ -79,97 +134,36 @@ export default function Editor() {
     suggestion,
     originalSuggestion,
     setSuggestion,
-    patchSuggestion,
     clearCanvas,
-    contextualNudge,
-    setContextualNudge,
   } = useCanvasStore();
 
-  const {
-    addThought,
-    themes,
-    problems,
-    nodes,
-    selectedProblemId,
-    setSelectedProblem,
-    getContextNudge,
-  } = useSystemStore();
+  const { addThought, themes, problems, selectedProblemId } = useSystemStore();
 
-  const [claimText, setClaimText] = useState("");
-  const [evidenceDraft, setEvidenceDraft] = useState<ThoughtEvidence[]>([]);
-  const [manualEvidenceRef, setManualEvidenceRef] = useState("");
+  const [isAutoAnalyzing, setIsAutoAnalyzing] = useState(false);
+  const lastAnalyzedContentRef = useRef("");
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const selectedProblem = selectedProblemId
     ? problems.find((problem) => problem.id === selectedProblemId) ?? null
     : null;
 
-  const systemSnapshot = `${problems.length}-${themes.length}-${nodes.length}`;
-
-  useEffect(() => {
-    const trimmed = content.trim();
-    if (!trimmed) {
-      setContextualNudge(null);
-      if (!isFocused) return;
-
-      const timer = window.setTimeout(() => {
-        setContextualNudge(getContextNudge(content));
-      }, 60_000);
-
-      return () => window.clearTimeout(timer);
-    }
-
-    setContextualNudge(getContextNudge(content));
-  }, [content, getContextNudge, setContextualNudge, systemSnapshot, isFocused]);
-
-  useEffect(() => {
-    if (!originalSuggestion) {
-      setEvidenceDraft([]);
-      setClaimText("");
-      setManualEvidenceRef("");
-      return;
-    }
-
-    setEvidenceDraft(originalSuggestion.evidenceHints ?? []);
-    const firstSentence = content.split(/[.!?]/)[0]?.trim();
-    setClaimText(firstSentence || content.trim() || "핵심 주장을 입력하세요.");
-    setManualEvidenceRef("");
-  }, [originalSuggestion, content]);
-
   const evaluatedSuggestion = useMemo(() => {
     if (!suggestion) return null;
     return evaluateSuggestionQualityGate({
       ...suggestion,
-      evidenceHints: evidenceDraft,
+      evidenceHints: normalizeEvidenceHints(suggestion.evidenceHints),
     });
-  }, [suggestion, evidenceDraft]);
+  }, [suggestion]);
 
-  const isConcludedBlocked = suggestion?.status === "CONCLUDED" && evaluatedSuggestion?.passed === false;
-  const saveChecklist = useMemo(() => {
-    const items = [
-      {
-        id: "content",
-        label: "생각 본문 입력",
-        done: content.trim().length > 0,
-      },
-      {
-        id: "claim",
-        label: "핵심 주장 작성",
-        done: claimText.trim().length > 0,
-      },
-      {
-        id: "evidence",
-        label: suggestion?.status === "CONCLUDED" ? "결론 근거 연결" : "근거 연결(선택)",
-        done: suggestion?.status === "CONCLUDED" ? evidenceDraft.length > 0 : true,
-      },
-      {
-        id: "gate",
-        label: "품질 게이트 통과",
-        done: Boolean(evaluatedSuggestion?.passed),
-      },
-    ];
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
 
-    return items;
-  }, [content, claimText, suggestion?.status, evidenceDraft.length, evaluatedSuggestion?.passed]);
+    textarea.style.height = "auto";
+    const nextHeight = Math.max(120, Math.min(textarea.scrollHeight, MAX_EDITOR_HEIGHT));
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > MAX_EDITOR_HEIGHT ? "auto" : "hidden";
+  }, [content]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -177,152 +171,144 @@ export default function Editor() {
       if (suggestion) {
         handleSave();
       } else {
-        handleAnalyze();
+        void handleAnalyze({ silent: false });
       }
     }
   };
 
-  const handleAnalyze = async () => {
-    if (!content.trim()) return;
+  const handleAnalyze = useCallback(
+    async (options?: { silent?: boolean; contentOverride?: string }) => {
+      const targetContent = (options?.contentOverride ?? content).trim();
+      if (!targetContent || isAnalyzing) return;
 
-    setAnalyzing(true);
-    setFocused(false);
-
-    try {
-      const response = await fetch("/api/ai/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content,
-          existingThemes: themes.map((theme) => theme.name),
-          activeProblems: problems
-            .filter((problem) => problem.status === "OPEN")
-            .map((problem) => problem.title),
-        }),
-      });
-
-      if (!response.ok) throw new Error("Analysis failed");
-
-      const result = await response.json();
-
-      const analyzed = {
-        problemTitle: typeof result.problemTitle === "string" ? result.problemTitle : "새 문제",
-        themeName: typeof result.themeName === "string" ? result.themeName : "새 주제",
-        status: (result.status as ThoughtStatus) || "DRAFT",
-        uncertaintyLabel: (result.uncertaintyLabel as UncertaintyLabel) || "MEDIUM",
-        evidenceHints: Array.isArray(result.evidenceHints)
-          ? result.evidenceHints.filter(
-              (item: unknown): item is ThoughtEvidence =>
-                Boolean(item) &&
-                typeof item === "object" &&
-                typeof (item as ThoughtEvidence).sourceRef === "string" &&
-                typeof (item as ThoughtEvidence).type === "string" &&
-                typeof (item as ThoughtEvidence).relevance === "number"
-            )
-          : [],
-        provenance:
-          result.provenance && typeof result.provenance === "object"
-            ? result.provenance
-            : defaultSuggestion(content).provenance,
-        qualityGate: {
-          passed: true,
-          reasons: [],
-        },
-      };
-
-      const gate = evaluateSuggestionQualityGate(analyzed);
-      const adjusted = {
-        ...analyzed,
-        status:
-          analyzed.status === "CONCLUDED" && !gate.passed && analyzed.evidenceHints.length === 0
-            ? ("HESITATED" as ThoughtStatus)
-            : analyzed.status,
-      };
-      const adjustedGate = evaluateSuggestionQualityGate(adjusted);
-
-      setSuggestion({
-        ...adjusted,
-        qualityGate: adjustedGate,
-      });
-
-      if (!adjustedGate.passed) {
-        toast.warning("품질 게이트 미통과 제안입니다. 근거를 보강하거나 상태를 조정하세요.");
+      const silent = Boolean(options?.silent);
+      setAnalyzing(true);
+      if (silent) {
+        setIsAutoAnalyzing(true);
+      } else {
+        setFocused(false);
       }
-    } catch (error) {
-      console.error("AI Analysis failed:", error);
-      const fallback = defaultSuggestion(content);
-      setSuggestion(fallback);
-      toast.warning("AI 응답이 지연되어 임시 제안을 사용합니다.");
-    } finally {
-      setAnalyzing(false);
-    }
-  };
 
-  const addEvidenceRef = () => {
-    const nextRef = manualEvidenceRef.trim().replace(/\s+/g, " ");
-    if (!nextRef) return;
+      try {
+        const response = await fetch("/api/ai/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: targetContent,
+            existingThemes: themes.map((theme) => theme.name),
+            activeProblems: problems
+              .filter((problem) => problem.status === "OPEN")
+              .map((problem) => problem.title),
+          }),
+        });
 
-    const duplicated = evidenceDraft.some(
-      (item) => item.sourceRef.toLowerCase() === nextRef.toLowerCase()
-    );
-    if (duplicated) {
-      toast.info("이미 추가된 근거입니다.");
+        if (!response.ok) throw new Error("Analysis failed");
+
+        const result = await response.json();
+        const evidenceHints = normalizeEvidenceHints(result.evidenceHints);
+        const analyzed = {
+          problemTitle: typeof result.problemTitle === "string" ? result.problemTitle : "새 질문",
+          themeName: typeof result.themeName === "string" ? result.themeName : "새 주제",
+          status: (result.status as ThoughtStatus) || "DRAFT",
+          tags: normalizeTags(
+            Array.isArray(result.tags)
+              ? result.tags.filter((item: unknown): item is string => typeof item === "string")
+              : []
+          ),
+          uncertaintyLabel: (result.uncertaintyLabel as UncertaintyLabel) || "MEDIUM",
+          evidenceHints,
+          provenance:
+            result.provenance && typeof result.provenance === "object"
+              ? result.provenance
+              : defaultSuggestion(targetContent).provenance,
+          qualityGate: {
+            passed: true,
+            reasons: [],
+          },
+        };
+
+        const gate = evaluateSuggestionQualityGate(analyzed);
+        const adjusted = {
+          ...analyzed,
+          status:
+            analyzed.status === "CONCLUDED" && !gate.passed && analyzed.evidenceHints.length === 0
+              ? ("HESITATED" as ThoughtStatus)
+              : analyzed.status,
+        };
+
+        setSuggestion({
+          ...adjusted,
+          qualityGate: evaluateSuggestionQualityGate(adjusted),
+        });
+        lastAnalyzedContentRef.current = targetContent;
+
+        if (!gate.passed && !silent) {
+          toast.info("근거가 부족하면 저장 시 상태를 자동으로 '유보'로 조정합니다.");
+        }
+      } catch (error) {
+        console.error("AI Analysis failed:", error);
+        const fallback = defaultSuggestion(targetContent);
+        setSuggestion(fallback);
+        lastAnalyzedContentRef.current = targetContent;
+        if (!silent) {
+          toast.warning("AI 응답이 지연되어 임시 제안을 사용합니다.");
+        }
+      } finally {
+        setAnalyzing(false);
+        if (silent) setIsAutoAnalyzing(false);
+      }
+    },
+    [content, isAnalyzing, problems, setAnalyzing, setFocused, setSuggestion, themes]
+  );
+
+  useEffect(() => {
+    const trimmed = content.trim();
+    if (!trimmed) {
+      lastAnalyzedContentRef.current = "";
       return;
     }
+    if (trimmed.length < 8) return;
+    if (trimmed === lastAnalyzedContentRef.current) return;
 
-    setEvidenceDraft((prev) => [
-      ...prev,
-      {
-        id: createId("evidence"),
-        type: "external_source",
-        sourceRef: nextRef,
-        relevance: 0.7,
-      },
-    ]);
-    setManualEvidenceRef("");
-  };
+    const timer = window.setTimeout(() => {
+      void handleAnalyze({
+        silent: true,
+        contentOverride: trimmed,
+      });
+    }, 900);
 
-  const updateEvidence = (id: string, patch: Partial<ThoughtEvidence>) => {
-    setEvidenceDraft((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              ...patch,
-              sourceRef:
-                typeof patch.sourceRef === "string"
-                  ? patch.sourceRef.trim().replace(/\s+/g, " ")
-                  : item.sourceRef,
-              relevance:
-                typeof patch.relevance === "number"
-                  ? Math.max(0, Math.min(1, Number(patch.relevance.toFixed(2))))
-                  : item.relevance,
-            }
-          : item
-      )
-    );
-  };
-
-  const removeEvidence = (id: string) => {
-    setEvidenceDraft((prev) => prev.filter((item) => item.id !== id));
-  };
+    return () => window.clearTimeout(timer);
+  }, [content, handleAnalyze]);
 
   const handleSave = () => {
     if (!content.trim()) return;
 
     try {
       const fallbackSuggestion = defaultSuggestion(content);
-      const finalSuggestion = suggestion
-        ? {
-            ...suggestion,
-            evidenceHints: evidenceDraft,
-            qualityGate: evaluateSuggestionQualityGate({ ...suggestion, evidenceHints: evidenceDraft }),
-          }
-        : {
-            ...fallbackSuggestion,
-            evidenceHints: evidenceDraft,
-            qualityGate: evaluateSuggestionQualityGate({ ...fallbackSuggestion, evidenceHints: evidenceDraft }),
-          };
+      const baseSuggestion = suggestion ? { ...suggestion } : { ...fallbackSuggestion };
+      const suggestionTags = normalizeTags(baseSuggestion.tags ?? fallbackSuggestion.tags);
+      const normalizedEvidence = normalizeEvidenceHints(baseSuggestion.evidenceHints);
+      const downgradedStatus =
+        baseSuggestion.status === "CONCLUDED" && normalizedEvidence.length === 0
+          ? ("HESITATED" as ThoughtStatus)
+          : baseSuggestion.status;
+
+      const finalSuggestion = {
+        ...baseSuggestion,
+        status: downgradedStatus,
+        tags: suggestionTags,
+        evidenceHints: normalizedEvidence,
+        qualityGate: evaluateSuggestionQualityGate({
+          ...baseSuggestion,
+          status: downgradedStatus,
+          tags: suggestionTags,
+          evidenceHints: normalizedEvidence,
+        }),
+      };
+
+      if (baseSuggestion.status === "CONCLUDED" && downgradedStatus === "HESITATED") {
+        toast.info("근거가 없어 상태를 자동으로 '유보'로 조정했습니다.");
+      }
 
       if (!finalSuggestion.qualityGate.passed) {
         toast.error("저장 조건을 충족하지 못했습니다.", {
@@ -334,12 +320,14 @@ export default function Editor() {
       const originalKey = originalSuggestion
         ? suggestionSnapshotKey({
             ...originalSuggestion,
-            evidenceHints: originalSuggestion.evidenceHints,
+            tags: normalizeTags(originalSuggestion.tags ?? []),
+            evidenceHints: normalizeEvidenceHints(originalSuggestion.evidenceHints),
           })
         : "";
       const currentKey = suggestionSnapshotKey({
         ...finalSuggestion,
-        evidenceHints: evidenceDraft,
+        tags: suggestionTags,
+        evidenceHints: normalizedEvidence,
       });
       const userEditedSuggestion = Boolean(originalSuggestion && originalKey !== currentKey);
 
@@ -347,20 +335,19 @@ export default function Editor() {
         claims: [
           {
             id: createId("claim"),
-            text: claimText.trim() || content.trim(),
+            text: content.split(/[.!?]/)[0]?.trim() || content.trim(),
             confidence: defaultConfidence(finalSuggestion.uncertaintyLabel),
             supports: [],
             attacks: [],
           },
         ],
-        evidence: evidenceDraft,
+        tags: suggestionTags,
+        evidence: normalizedEvidence,
         provenance: {
           ...finalSuggestion.provenance,
           userEditedSuggestion,
-          fromNudgeType: contextualNudge?.type ?? null,
         },
         userEditedSuggestion,
-        fromNudgeType: contextualNudge?.type ?? null,
       });
 
       clearCanvas();
@@ -375,48 +362,8 @@ export default function Editor() {
     }
   };
 
-  const handleIdk = () => {
-    if (!content.trim()) return;
-    const base = suggestion ?? defaultSuggestion(content);
-    const draftSuggestion = {
-      ...base,
-      status: "DRAFT" as ThoughtStatus,
-      themeName: suggestion?.themeName || "사유",
-      problemTitle: selectedProblem?.title || suggestion?.problemTitle || "지금의 고민은 무엇일까?",
-      uncertaintyLabel: "HIGH" as UncertaintyLabel,
-      qualityGate: {
-        passed: true,
-        reasons: [],
-      },
-    };
-
-    try {
-      const result = addThought(content, draftSuggestion, {
-        claims: [
-          {
-            id: createId("claim"),
-            text: claimText.trim() || content.trim(),
-            confidence: 0.35,
-            supports: [],
-            attacks: [],
-          },
-        ],
-        evidence: evidenceDraft,
-        provenance: {
-          ...draftSuggestion.provenance,
-          userEditedSuggestion: true,
-          fromNudgeType: contextualNudge?.type ?? null,
-        },
-        userEditedSuggestion: true,
-        fromNudgeType: contextualNudge?.type ?? null,
-      });
-      clearCanvas();
-      toast.success(`유보 노드 저장됨 · ${result.problem.title}`);
-    } catch (error) {
-      console.error("Draft save failed:", error);
-      toast.error("유보 저장 중 오류가 발생했습니다.");
-    }
-  };
+  const normalizedTags = suggestion ? normalizeTags(suggestion.tags ?? []) : [];
+  const normalizedEvidence = suggestion ? normalizeEvidenceHints(suggestion.evidenceHints) : [];
 
   return (
     <div
@@ -427,36 +374,28 @@ export default function Editor() {
     >
       <div className="surface-panel-strong relative group ring-1 ring-primary/12 focus-within:ring-primary/30 transition-all p-1.5">
         <textarea
+          ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={handleKeyDown}
-          placeholder="지금 맴도는 생각은 무엇인가요?"
+          placeholder="생각을 한 번에 길게 써도 됩니다. AI가 자동으로 질문/태그/연결을 분석합니다."
           disabled={isAnalyzing}
-          className="w-full min-h-[120px] bg-transparent resize-none p-4 text-lg text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 font-serif"
-          style={{ height: Math.max(120, content.split("\n").length * 28 + 40) + "px" }}
+          className="w-full min-h-[120px] bg-transparent resize-none p-4 text-lg leading-8 text-foreground placeholder:text-muted-foreground/55 focus:outline-none disabled:opacity-50 font-serif"
         />
 
         <div className="flex items-center justify-between px-3 py-2 border-t border-border/50">
           <button
-            onClick={handleIdk}
-            className="touch-target text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors px-3 sm:px-2 py-1.5 sm:py-1 rounded-md hover:bg-muted"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>아직 모르겠음</span>
-          </button>
-
-          <button
-            onClick={handleAnalyze}
+            onClick={() => void handleAnalyze({ silent: false })}
             disabled={!content.trim() || isAnalyzing}
-            className="touch-target text-primary hover:text-primary/80 disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium transition-colors px-3 sm:px-2 py-1.5 sm:py-1 rounded-md hover:bg-primary/10"
+            className="touch-target ml-auto text-primary hover:text-primary/80 disabled:opacity-50 flex items-center gap-1.5 text-sm font-medium transition-colors px-3 sm:px-2 py-1.5 sm:py-1 rounded-md hover:bg-primary/10"
           >
             {isAnalyzing ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
-                <span>분석</span>
+                <span>다시 분석</span>
                 <ArrowRightCircle className="w-4 h-4" />
               </>
             )}
@@ -464,33 +403,10 @@ export default function Editor() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {contextualNudge && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 6 }}
-            className="absolute left-0 right-0 -top-14"
-          >
-            <div className="mx-auto w-fit max-w-full px-3 py-1.5 rounded-full border border-border/60 bg-background/90 backdrop-blur text-xs text-muted-foreground flex items-center gap-2 shadow">
-              <Link2 className="w-3.5 h-3.5" />
-              <span className="truncate max-w-[32rem]">{contextualNudge.message}</span>
-              {contextualNudge.targetProblemId && (
-                <button
-                  type="button"
-                  className="text-primary hover:underline"
-                  onClick={() => {
-                    setSelectedProblem(contextualNudge.targetProblemId!);
-                    router.push(`/problem/${contextualNudge.targetProblemId!}`);
-                  }}
-                >
-                  열기
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <div className="mt-2 px-2 text-[11px] text-muted-foreground">
+        입력을 멈추면 약 1초 뒤 자동 분석됩니다.
+        {isAutoAnalyzing && " · 자동 분석 중..."}
+      </div>
 
       <AnimatePresence>
         {suggestion && !isAnalyzing && (
@@ -498,162 +414,87 @@ export default function Editor() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="absolute left-0 right-0 top-full mt-4"
+            className="mt-4"
           >
             <div className="mx-auto w-[48rem] max-w-full surface-panel-strong p-3 space-y-3">
               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5" />
-                  AI 제안 (수정 후 저장 가능)
+                  AI 자동 분석 결과
                 </span>
                 <span className="inline-flex items-center gap-1 text-[11px]">
                   {evaluatedSuggestion?.passed ? (
                     <>
                       <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                      품질 게이트 통과
+                      저장 가능
                     </>
                   ) : (
                     <>
                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                      품질 게이트 점검 필요
+                      저장 전 자동 보정 필요
                     </>
                   )}
                 </span>
               </div>
 
-              <div className="flex gap-1.5 flex-wrap">
-                {STATUS_OPTIONS.map((status) => (
-                  <Chip
-                    key={status}
-                    label={STATUS_LABEL[status]}
-                    variant={suggestion.status === status ? "primary" : "outline"}
-                    onClick={() => patchSuggestion({ status })}
-                  />
-                ))}
+              <div className="rounded-md border border-border/60 bg-muted/20 px-2.5 py-2 text-xs text-muted-foreground space-y-1">
+                <p>
+                  AI가 이 글에서 자동으로 뽑는 값: <strong className="text-foreground/90">상태</strong> ·{" "}
+                  <strong className="text-foreground/90">AI 질문</strong> ·{" "}
+                  <strong className="text-foreground/90">태그</strong> ·{" "}
+                  <strong className="text-foreground/90">근거 후보</strong>
+                </p>
+                <p>
+                  용어 정리: <strong className="text-foreground/90">주제 묶음</strong>은 좌측에서 고르는 기록 폴더,
+                  <strong className="text-foreground/90"> AI 질문</strong>은 지금 글이 답하려는 한 줄 질문입니다.
+                </p>
               </div>
 
-              <div className="flex gap-1.5 flex-wrap">
-                {UNCERTAINTY_OPTIONS.map((label) => (
-                  <Chip
-                    key={label}
-                    label={`불확실성 ${UNCERTAINTY_LABEL[label]}`}
-                    variant={suggestion.uncertaintyLabel === label ? "primary" : "outline"}
-                    onClick={() => patchSuggestion({ uncertaintyLabel: label })}
-                  />
-                ))}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">AI 판단 상태</span>
+                <Chip label={STATUS_LABEL[suggestion.status]} variant="primary" />
               </div>
 
-              <div className="grid md:grid-cols-2 gap-2">
-                <Input
-                  value={suggestion.problemTitle}
-                  onChange={(event) => patchSuggestion({ problemTitle: event.target.value })}
-                  placeholder="연결할 질문"
-                />
-                <Input
-                  value={suggestion.themeName}
-                  onChange={(event) => patchSuggestion({ themeName: event.target.value })}
-                  placeholder="연결할 주제"
-                />
-              </div>
-
-              <div className="rounded-lg border border-border/50 p-2.5 space-y-1.5">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">저장 준비 체크</p>
-                <div className="grid sm:grid-cols-2 gap-1.5">
-                  {saveChecklist.map((item) => (
-                    <p
-                      key={item.id}
-                      className={cn(
-                        "text-xs rounded-md px-2 py-1 border",
-                        item.done
-                          ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-600"
-                          : "border-amber-500/35 bg-amber-500/10 text-amber-700"
-                      )}
-                    >
-                      {item.done ? "완료" : "필요"} · {item.label}
-                    </p>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2 rounded-lg border border-border/50 p-2.5">
-                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">핵심 주장(Claim)</p>
-                <Input
-                  value={claimText}
-                  onChange={(event) => setClaimText(event.target.value)}
-                  placeholder="저장할 핵심 주장"
-                />
+              <div className="space-y-1 rounded-lg border border-border/50 p-2.5">
+                <p className="text-[11px] text-muted-foreground uppercase tracking-wider">AI 질문</p>
+                <p className="text-sm text-foreground/90">{suggestion.problemTitle}</p>
               </div>
 
               <div className="space-y-2 rounded-lg border border-border/50 p-2.5">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">근거(Evidence)</p>
-                  <span className="text-[11px] text-muted-foreground">{evidenceDraft.length}개 연결</span>
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">AI 태그</p>
+                  <span className="text-[11px] text-muted-foreground">{normalizedTags.length}개</span>
                 </div>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    value={manualEvidenceRef}
-                    onChange={(event) => setManualEvidenceRef(event.target.value)}
-                    placeholder="근거 링크 또는 노드 ID 추가"
-                  />
-                  <button
-                    type="button"
-                    onClick={addEvidenceRef}
-                    className="touch-target h-10 sm:h-9 px-3 rounded-md border border-border/70 text-xs text-muted-foreground hover:text-foreground hover:bg-muted inline-flex items-center gap-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    추가
-                  </button>
-                </div>
-
-                {!evidenceDraft.length && (
-                  <p className="text-xs text-amber-600/90">근거가 없으면 결론 상태로 저장할 수 없습니다.</p>
-                )}
-
-                <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                  {evidenceDraft.map((item) => (
-                    <div key={item.id} className="rounded-md border border-border/50 p-2 space-y-1.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs text-foreground/90 break-all">{item.sourceRef}</p>
-                        <button
-                          type="button"
-                          onClick={() => removeEvidence(item.id)}
-                          className="touch-target-icon text-muted-foreground hover:text-destructive inline-flex items-center justify-center rounded-md"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
-                          value={item.type}
-                          onChange={(event) =>
-                            updateEvidence(item.id, {
-                              type: event.target.value as ThoughtEvidence["type"],
-                            })
-                          }
-                          className="h-8 rounded-md border border-border/60 bg-background px-2 text-xs"
-                        >
-                          <option value="external_source">외부 문헌</option>
-                          <option value="retrieved_doc">검색 문서</option>
-                          <option value="internal_note">내부 노트</option>
-                        </select>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="1"
-                          value={item.relevance}
-                          onChange={(event) =>
-                            updateEvidence(item.id, {
-                              relevance: Number(event.target.value || 0),
-                            })
-                          }
-                          className="h-8"
-                        />
-                      </div>
-                    </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {normalizedTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-xs text-foreground/85"
+                    >
+                      #{tag}
+                    </span>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-2 rounded-lg border border-border/50 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-muted-foreground uppercase tracking-wider">근거 후보</p>
+                  <span className="text-[11px] text-muted-foreground">{normalizedEvidence.length}개</span>
+                </div>
+                {!normalizedEvidence.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    현재 글에서 자동 감지된 근거가 없습니다. 저장 시 결론 상태는 자동으로 &quot;유보&quot;로 조정됩니다.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">
+                    {normalizedEvidence.map((item) => (
+                      <div key={item.id} className="rounded-md border border-border/50 p-2">
+                        <p className="text-xs text-foreground/90 break-all">{item.sourceRef}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {evaluatedSuggestion && !evaluatedSuggestion.passed && (
@@ -667,30 +508,17 @@ export default function Editor() {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <p className="text-xs text-muted-foreground">
                   {selectedProblem
-                    ? `현재 선택 문제: ${selectedProblem.title}`
-                    : "문제를 선택하지 않으면 AI 제안 기준으로 저장됩니다."}
+                    ? `저장 위치(주제 묶음): ${selectedProblem.title}`
+                    : "저장 위치: AI 질문 기준으로 주제 묶음을 자동 선택/생성"}
                 </p>
-                <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={handleAnalyze}
-                    className="touch-target text-xs px-3 sm:px-2.5 py-1.5 rounded-md border border-border/70 text-muted-foreground hover:text-foreground hover:bg-muted w-full sm:w-auto"
-                  >
-                    다시 분석
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSave}
-                    disabled={isConcludedBlocked}
-                    className={cn(
-                      "touch-target text-xs px-3 sm:px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center gap-1 w-full sm:w-auto",
-                      isConcludedBlocked && "opacity-60 cursor-not-allowed"
-                    )}
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    저장하기
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  className="touch-target text-xs px-3 sm:px-2.5 py-1.5 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center justify-center gap-1 w-full sm:w-auto"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  저장하기
+                </button>
               </div>
             </div>
           </motion.div>
@@ -703,22 +531,18 @@ export default function Editor() {
 function Chip({
   label,
   variant,
-  onClick,
 }: {
   label: string;
   variant: "primary" | "outline";
-  onClick?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <span
       className={cn(
-        "touch-target px-3.5 sm:px-3 py-1.5 sm:py-1 text-xs rounded-full border border-border/50 bg-card hover:bg-muted transition-colors text-muted-foreground cursor-pointer shadow-sm",
-        variant === "primary" && "border-primary/20 text-primary bg-primary/5 hover:bg-primary/10"
+        "inline-flex items-center px-3.5 sm:px-3 py-1.5 sm:py-1 text-xs rounded-full border border-border/50 bg-card text-muted-foreground shadow-sm",
+        variant === "primary" && "border-primary/20 text-primary bg-primary/5"
       )}
     >
       {label}
-    </button>
+    </span>
   );
 }

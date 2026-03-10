@@ -33,11 +33,29 @@ function shortHash(text: string): string {
   return Math.abs(hash).toString(36).slice(0, 8);
 }
 
+function normalizeTags(input: string[] | undefined): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+
+  for (const raw of input ?? []) {
+    const tag = normalizeLabel(raw, "").replace(/^#/, "").trim();
+    if (tag.length < 2) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(tag.slice(0, 24));
+    if (next.length >= 8) break;
+  }
+
+  return next.length ? next : ["메모"];
+}
+
 function fallbackAnalyze(content: string, existingThemes: string[], activeProblems: string[]) {
   const fallback = defaultSuggestion(content);
 
   const suggestion = {
     ...fallback,
+    tags: normalizeTags(fallback.tags),
     themeName: pickClosestLabel(content, existingThemes, fallback.themeName),
     problemTitle: pickClosestLabel(content, activeProblems, fallback.problemTitle),
     provenance: {
@@ -60,6 +78,7 @@ const suggestionSchema = z.object({
   status: z.enum(["DRAFT", "HESITATED", "CONCLUDED"]),
   themeName: z.string().min(1),
   problemTitle: z.string().min(1),
+  tags: z.array(z.string().min(1)).min(1).max(8),
   uncertaintyLabel: z.enum(["LOW", "MEDIUM", "HIGH"]),
   evidenceHints: z
     .array(
@@ -117,6 +136,7 @@ export async function POST(req: Request) {
       ...object,
       themeName: normalizeLabel(object.themeName, "사유"),
       problemTitle: normalizeLabel(object.problemTitle, "이 생각은 어떤 질문에 답하려는가?"),
+      tags: normalizeTags(object.tags),
     };
 
     const suggestion = {

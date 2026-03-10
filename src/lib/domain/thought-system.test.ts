@@ -28,6 +28,7 @@ function makeNode(params: Partial<ThoughtNode> & Pick<ThoughtNode, "id" | "conte
     createdAt: params.createdAt,
     problemId: params.problemId,
     themeId: params.themeId,
+    tags: params.tags ?? ["메모"],
     claims: params.claims ?? [
       {
         id: `${params.id}_claim`,
@@ -189,6 +190,15 @@ describe("thought-system domain", () => {
         (node) => node.provenance.source === "ai" || node.provenance.source === "fallback"
       )
     ).toBe(true);
+  });
+
+  it("includes tags in filtering and default suggestion", () => {
+    const base = createSeedData("2026-03-05T00:00:00.000Z");
+    const byTag = filterNodes(base.nodes, "장기사용", "ALL");
+    const suggestion = defaultSuggestion("사용자 인터뷰를 바탕으로 온보딩 마찰을 줄이고 싶다.");
+
+    expect(byTag.length).toBeGreaterThan(0);
+    expect(suggestion.tags.length).toBeGreaterThan(0);
   });
 
   it("updates node content/status and recalculates relations", () => {

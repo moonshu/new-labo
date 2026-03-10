@@ -130,6 +130,38 @@ function normalizeSourceRef(value: string): string {
   return compact.slice(0, 240);
 }
 
+function normalizeTag(value: string): string {
+  const compact = value.trim().replace(/\s+/g, " ").replace(/^#/, "");
+  return compact.slice(0, 24);
+}
+
+function sanitizeTags(tags: string[]): string[] {
+  const seen = new Set<string>();
+  const next: string[] = [];
+
+  for (const raw of tags) {
+    const tag = normalizeTag(raw);
+    if (tag.length < 2) continue;
+    const key = tag.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(tag);
+    if (next.length >= 8) break;
+  }
+
+  return next.length ? next : ["메모"];
+}
+
+export function createDefaultTags(content: string): string[] {
+  const tokens = content
+    .split(/[^a-zA-Z0-9가-힣]+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2)
+    .filter((token) => !STOP_WORDS.has(token.toLowerCase()));
+
+  return sanitizeTags(tokens.slice(0, 12));
+}
+
 export function createDefaultProvenance(params?: {
   generatedAt?: string | Date;
   source?: ThoughtProvenance["source"];
@@ -475,6 +507,7 @@ export function createSeedData(referenceNow?: string | Date): ThoughtSystemData 
       createdAt: at(20),
       problemId: "problem_core",
       themeId: "theme_productivity",
+      tags: ["폴더구조", "기록지연", "생산성"],
       claims: [
         {
           id: "claim_n1",
@@ -498,6 +531,7 @@ export function createSeedData(referenceNow?: string | Date): ThoughtSystemData 
       createdAt: at(12),
       problemId: "problem_core",
       themeId: "theme_writing",
+      tags: ["질문기반", "사고흐름", "글쓰기"],
       claims: [
         {
           id: "claim_n2",
@@ -521,6 +555,7 @@ export function createSeedData(referenceNow?: string | Date): ThoughtSystemData 
       createdAt: at(4),
       problemId: "problem_core",
       themeId: "theme_writing",
+      tags: ["변화기록", "장기사용", "제품가설"],
       claims: [
         {
           id: "claim_n3",
@@ -551,6 +586,7 @@ export function createSeedData(referenceNow?: string | Date): ThoughtSystemData 
       createdAt: at(8),
       problemId: "problem_stale",
       themeId: "theme_productivity",
+      tags: ["회고", "재진입", "지표"],
       claims: [
         {
           id: "claim_n4",
@@ -629,12 +665,14 @@ export function defaultSuggestion(content: string): AISuggestion {
 
   const uncertaintyLabel: UncertaintyLabel =
     status === "DRAFT" ? "HIGH" : status === "HESITATED" ? "MEDIUM" : "LOW";
+  const tags = createDefaultTags(normalized);
   const evidenceHints = createDefaultEvidence(normalized);
 
   const suggestion: AISuggestion = {
     status,
     themeName: "사유",
     problemTitle: "이 생각은 어떤 질문에 답하려는가?",
+    tags,
     uncertaintyLabel,
     evidenceHints,
     provenance: createDefaultProvenance({
@@ -680,6 +718,11 @@ export function applyThoughtNode(
   );
 
   const claimsInput = input.claims?.length ? input.claims : createDefaultClaim(content);
+  const tagsInput = input.tags?.length
+    ? input.tags
+    : suggestion.tags?.length
+      ? suggestion.tags
+      : createDefaultTags(content);
   const suggestionEvidenceHints = Array.isArray(suggestion.evidenceHints) ? suggestion.evidenceHints : [];
   const evidenceInput = input.evidence?.length
     ? input.evidence
@@ -687,6 +730,7 @@ export function applyThoughtNode(
       ? suggestionEvidenceHints
       : createDefaultEvidence(content);
 
+  const tags = sanitizeTags(tagsInput);
   const claims = sanitizeClaims(claimsInput);
   const evidence = sanitizeEvidence(evidenceInput);
   if (suggestion.status === "CONCLUDED" && evidence.length === 0) {
@@ -710,6 +754,7 @@ export function applyThoughtNode(
     createdAt: timestamp,
     problemId: problemResult.problem.id,
     themeId: themeResult.theme.id,
+    tags,
     claims,
     evidence,
     provenance,
@@ -805,6 +850,7 @@ export function filterNodes(
     return (
       node.content.toLowerCase().includes(normalizedQuery) ||
       node.status.toLowerCase().includes(normalizedQuery) ||
+      node.tags.some((tag) => tag.toLowerCase().includes(normalizedQuery)) ||
       node.claims.some((claim) => claim.text.toLowerCase().includes(normalizedQuery)) ||
       node.evidence.some((evidence) => evidence.sourceRef.toLowerCase().includes(normalizedQuery))
     );
@@ -900,6 +946,7 @@ export function updateThoughtNode(
     nodeId: string;
     content: string;
     status: ThoughtStatus;
+    tags?: string[];
     claims?: ThoughtClaim[];
     evidence?: ThoughtEvidence[];
     provenance?: ThoughtProvenance;
@@ -923,7 +970,9 @@ export function updateThoughtNode(
   }
 
   const baseClaims = existing.claims?.length ? existing.claims : createDefaultClaim(existing.content);
+  const baseTags = existing.tags?.length ? existing.tags : createDefaultTags(existing.content);
   const baseEvidence = Array.isArray(existing.evidence) ? existing.evidence : [];
+  const nextTags = sanitizeTags(params.tags?.length ? params.tags : baseTags);
   const nextClaims = sanitizeClaims(params.claims?.length ? params.claims : baseClaims);
   const nextEvidence = sanitizeEvidence(params.evidence ?? baseEvidence);
   if (params.status === "CONCLUDED" && nextEvidence.length === 0) {
@@ -943,6 +992,7 @@ export function updateThoughtNode(
     ...existing,
     content: nextContent,
     status: params.status,
+    tags: nextTags,
     claims: nextClaims,
     evidence: nextEvidence,
     provenance: nextProvenance,
@@ -1191,6 +1241,12 @@ export function parseThoughtSystemData(raw: string): { ok: true; data: ThoughtSy
       }
 
       const status = typeof item.status === "string" && isThoughtStatus(item.status) ? item.status : "DRAFT";
+      const tagsRaw = Array.isArray(item.tags) ? item.tags : [];
+      const tags = sanitizeTags(
+        tagsRaw.filter((tag): tag is string => typeof tag === "string").length
+          ? tagsRaw.filter((tag): tag is string => typeof tag === "string")
+          : createDefaultTags(item.content)
+      );
       const claimsRaw = Array.isArray(item.claims) ? item.claims : [];
       const claims = claimsRaw
         .filter(
@@ -1284,6 +1340,7 @@ export function parseThoughtSystemData(raw: string): { ok: true; data: ThoughtSy
         createdAt: typeof item.createdAt === "string" ? item.createdAt : nowIso(),
         problemId: item.problemId,
         themeId: item.themeId,
+        tags,
         claims: repairedClaims,
         evidence: repairedEvidence,
         provenance,

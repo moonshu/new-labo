@@ -28,6 +28,7 @@ export interface ThoughtNode {
   createdAt: string;
   problemId: string;
   themeId: string;
+  tags: string[];
   claims: ThoughtClaim[];
   evidence: ThoughtEvidence[];
   provenance: ThoughtProvenance;
@@ -91,6 +92,7 @@ export interface AISuggestion {
   themeName: string;
   problemTitle: string;
   status: ThoughtStatus;
+  tags: string[];
   uncertaintyLabel: UncertaintyLabel;
   evidenceHints: ThoughtEvidence[];
   provenance: ThoughtProvenance;
@@ -101,6 +103,7 @@ export interface AddThoughtInput {
   content: string;
   suggestion: AISuggestion;
   selectedProblemId?: string | null;
+  tags?: string[];
   claims?: ThoughtClaim[];
   evidence?: ThoughtEvidence[];
   provenance?: ThoughtProvenance;

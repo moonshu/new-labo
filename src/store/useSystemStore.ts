@@ -93,6 +93,7 @@ interface SystemState {
     content: string,
     suggestion: AISuggestion,
     options?: {
+      tags?: string[];
       claims?: ThoughtClaim[];
       evidence?: ThoughtEvidence[];
       provenance?: ThoughtProvenance;
@@ -104,6 +105,7 @@ interface SystemState {
     nodeId: string;
     content: string;
     status: ThoughtStatus;
+    tags?: string[];
     claims?: ThoughtClaim[];
     evidence?: ThoughtEvidence[];
     provenance?: ThoughtProvenance;
@@ -170,6 +172,7 @@ export const useSystemStore = create<SystemState>()(
             content,
             suggestion,
             selectedProblemId: current.selectedProblemId,
+            tags: options?.tags,
             claims: options?.claims,
             evidence: options?.evidence,
             provenance: options?.provenance,
@@ -418,7 +421,7 @@ export const useSystemStore = create<SystemState>()(
         nodes: state.nodes,
         relations: state.relations,
       }),
-      version: 4,
+      version: 5,
       migrate: (persistedState, version) => {
         if (!persistedState || typeof persistedState !== "object") {
           return {
@@ -434,7 +437,7 @@ export const useSystemStore = create<SystemState>()(
 
         const maybeState = persistedState as Partial<SystemState>;
 
-        if (version < 4) {
+        if (version < 5) {
           const parsed = parseThoughtSystemData(
             JSON.stringify({
               themes: Array.isArray(maybeState.themes) ? maybeState.themes : initialData.themes,
